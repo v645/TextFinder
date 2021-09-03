@@ -1,0 +1,10 @@
+C:\Users\Asus\source\repos\TextFinder\TextFinder\bin\Debug\TextFinder.exe.config
+C:\Users\Asus\source\repos\TextFinder\TextFinder\bin\Debug\TextFinder.exe
+C:\Users\Asus\source\repos\TextFinder\TextFinder\bin\Debug\TextFinder.pdb
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.csprojAssemblyReference.cache
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.Form1.resources
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.Properties.Resources.resources
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.csproj.GenerateResource.cache
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.csproj.CoreCompileInputs.cache
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.exe
+C:\Users\Asus\source\repos\TextFinder\TextFinder\obj\Debug\TextFinder.pdb

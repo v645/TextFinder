@@ -2,25 +2,50 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
+    using System.Runtime.InteropServices;
 
 namespace TextFinder
 {
+
+
+   
     public partial class Form1 : Form
     {
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool AllocConsole();
+
+
         public Form1()
         {
+
             InitializeComponent();
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            AllocConsole();
+            Main.Start();
         }
     }
 
     public class Main
     {
-        public void Start()
+        public static void Start()
         {
+            Base mainBase = new Base();
+
+            mainBase.AddDocument(new Document("here is some lorem ipsum text", 1));
+            mainBase.AddDocument(new Document("here is some lorem ipsum text but it is much longer",2));
+            mainBase.AddDocument(new Document("here is some banana text but it is much longer", 3));
+            mainBase.AddDocument(new Document("here is some banana banana banana text but it is much longer", 3));
+
+            Search search = new Search();
+
+            search.GetSearchResult("lorem ipsum", mainBase);
+            Console.WriteLine();
+            search.GetSearchResult("banana", mainBase);
         }
     }
 
@@ -133,6 +158,15 @@ namespace TextFinder
             this.text = text;
             this.date = date;
             this.time = time;
+            this.documentID = documentID;
+        }
+
+        public Document(string text,int documentID)
+        {
+            //this.title = title;
+            this.text = text;
+           // this.date = date;
+           // this.time = time;
             this.documentID = documentID;
         }
 
@@ -269,14 +303,21 @@ namespace TextFinder
         {
             string[] qWords = GetSearchQueryVector(query);
 
+            //Dictionary<SearchResult,double> results = new Dictionary<SearchResult,double>();
 
+            List<SearchResult> results = new List<SearchResult>();
 
             double queryEuclideanNorm = Math.Sqrt(qWords.Length);
 
             foreach (var p in data.documents)
             {
                 double score = (ScalarProduct(data.GetDocumentWeights(p), qWords));
+                results.Add(new SearchResult(p, "", score, "now"));
+
+                Console.WriteLine($"{score} ::" + p.documentID);
             }
+
+            return results.OrderBy(result => result.rank);
         }
     }
 }
