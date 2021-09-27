@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using TikaOnDotNet.TextExtraction;
 
@@ -22,67 +24,94 @@ namespace TextFinder
             // OpenNLP.Tools.Parser.Parse parse = new OpenNLP.Tools.Parser.Parse("kitten",)
         }
 
+        private Base mainBase;
+
         private void Form1_Load(object sender, EventArgs e)
         {
             AllocConsole();
-            Main.Start();
+            mainBase = Main.StartBase();
+
+            label1.Text = trackBar1.Value + "";
+            Main.accuracy = trackBar1.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+
+            label2.Text = trackBar2.Value + "";
+            Main.minWordLength = trackBar2.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+
+            label3.Text = trackBar3.Value + "";
+            Main.minimalWordUsingsCount = trackBar3.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            Search search = new Search();
+            Benchmark.MeasureSearch(search, mainBase, textBox1.Text);
+        }
+
+        private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+        }
+
+        private void trackBar1_Scroll(object sender, EventArgs e)
+        {
+            label1.Text = trackBar1.Value + "";
+            Main.accuracy = trackBar1.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+        }
+
+        private void trackBar2_Scroll(object sender, EventArgs e)
+        {
+            label2.Text = trackBar2.Value + "";
+            Main.minWordLength = trackBar2.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+        }
+
+        private void label2_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void trackBar3_Scroll(object sender, EventArgs e)
+        {
+            label3.Text = trackBar3.Value + "";
+            Main.minimalWordUsingsCount = trackBar3.Value;
+            mainBase.SetDocumentRefreshCountFlag();
+        }
+
+        private void label3_Click(object sender, EventArgs e)
+        {
         }
     }
 
     public class Main
     {
-        public static void Start()
+        public static float accuracy = 80;
+        public static int minWordLength = 2;
+        public static int minimalWordUsingsCount = 2;
+
+        public static Base StartBase()
         {
             Console.Clear();
+            Loader.GetExtractor();//.Extract();
             Base mainBase = new Base();
 
+            Console.WriteLine("add folder for " + Benchmark.Measure(() => Loader.AddFolder("E:\\folder", mainBase)) + "ms");
+
+            /*
             Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetTxt("E:\\sampleText1.txt"))));
             Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetOtherText("E:\\sampleTextPDF.pdf"))));
             Console.Clear();
             Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetOtherText("E:\\sampleWord.docx"))));
-            Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetOtherText("E:\\excel.xlsx"))));
+            Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetOtherText("E:\\excel.xlsx"))));*/
 
-            mainBase.AddDocument(new Document("single lorem", "here is some lorem ipsum text"));
-            mainBase.AddDocument(new Document("long lorem", "here is some lorem ipsum text but it is much longer"));
-            mainBase.AddDocument(new Document("single banana", "here is some banana text but it is much longer"));
-            mainBase.AddDocument(new Document("many banana", "here is some banana banana banana text but it is much longer"));
+            /* mainBase.AddDocument(new Document("single lorem", "here is some lorem ipsum text"));
+             mainBase.AddDocument(new Document("long lorem", "here is some lorem ipsum text but it is much longer"));
+             mainBase.AddDocument(new Document("single banana", "here is some banana text but it is much longer"));
+             mainBase.AddDocument(new Document("many banana", "here is some banana banana banana text but it is much longer"));*/
+           
 
-            Search search = new Search();
-
-            Benchmark.MeasureSearch(search, mainBase, "lorem ipsum");
-            Console.WriteLine();
-
-            Benchmark.MeasureSearch(search, mainBase, "banana");
-            Console.WriteLine();
-
-            Benchmark.MeasureSearch(search, mainBase, "метрика");
-            Console.WriteLine();
-
-            mainBase.RemoveDocument(mainBase.GetDocumentByID(6));
-            mainBase.RemoveDocument(mainBase.GetDocumentByID(5));
-
-            Benchmark.MeasureSearch(search, mainBase, "lorem ipsum");
-            Console.WriteLine();
-
-            Benchmark.MeasureSearch(search, mainBase, "banana");
-            Console.WriteLine();
-
-            Benchmark.MeasureSearch(search, mainBase, "метрика");
-           /* Console.WriteLine();
-            Console.WriteLine();
-            Console.WriteLine();
-            Console.WriteLine();
-
-            Console.WriteLine(mainBase.GetDocumentByID(4).text);
-            Console.WriteLine();
-            Console.WriteLine();
-
-            foreach (var w in mainBase.GetDocumentByID(4).text.Split('\t'))
-            {
-
-            Console.WriteLine(w);
-            }
-            */
+            return mainBase;
         }
     }
 
@@ -121,10 +150,10 @@ namespace TextFinder
             documents.Add(d);
             d.documentID = ++lastID;
 
-            SetDocumentRefreshFlag();
+            SetDocumentRefreshWeightFlag();
         }
 
-        private void SetDocumentRefreshFlag()
+        private void SetDocumentRefreshWeightFlag()
         {
             foreach (var d in documents)
             {
@@ -132,12 +161,21 @@ namespace TextFinder
             }
         }
 
+        public void SetDocumentRefreshCountFlag()
+        {
+            foreach (var d in documents)
+            {
+                d.needRecalculateCount = true;
+            }
+            SetDocumentRefreshWeightFlag();
+        }
+
         public bool RemoveDocument(Document d)
         {
             if (documents.Contains(d))
             {
                 documents.Remove(d);
-                SetDocumentRefreshFlag();
+                SetDocumentRefreshWeightFlag();
                 return true;
             }
 
@@ -175,15 +213,24 @@ namespace TextFinder
             int totalDocuments = documents.Count;
             double totalWeightSumSq = 0;
 
-            foreach (var d in document.GetWordCount())
-            {
-                int wordCount = d.Value;
-                string wordOther = d.Key;
+            Parallel.ForEach(document.GetWordCount(), (d) =>
+             {
+                 int wordCount = d.Value;
+                 string wordOther = d.Key;
 
-                double w = wordWeighted(wordOther, wordCount, totalDocuments);
+                 double w = wordWeighted(wordOther, wordCount, totalDocuments);
 
-                totalWeightSumSq += w * w;
-            }
+                 totalWeightSumSq += w * w;
+             });
+           /* foreach (var d in document.GetWordCount())
+             {
+                 int wordCount = d.Value;
+                 string wordOther = d.Key;
+
+                 double w = wordWeighted(wordOther, wordCount, totalDocuments);
+
+                 totalWeightSumSq += w * w;
+             }*/
 
             return wordWeight / Math.Sqrt(totalWeightSumSq);
         }
@@ -215,15 +262,30 @@ namespace TextFinder
             if (document.documentWeights.Count != 0 && !document.needRecalculateWeights) { return document.documentWeights; }
 
             Dictionary<string, double> weights = new Dictionary<string, double>();
+/*
+            Console.WriteLine("GetDocumentWeights for" +
+            Benchmark.Measure(() =>
+            {*/
+                /* List<Task> tasks = new List<Task>();
+                 foreach (var w in document.GetWordCount().Keys)
+                 {
+                    tasks.Add( Task.Run(()=> weights.Add(w, WeightOfWord(w, document))));
+                 }
 
-            /* Console.WriteLine("GetDocumentWeights for"+
-             Benchmark.Measure(() =>
-             { */
-            foreach (var w in document.GetWordCount().Keys)
-            {
-                weights.Add(w, WeightOfWord(w, document));
-            }
-            //}) +"ms");
+                 Task.WaitAll(tasks.ToArray());*/
+
+                foreach (var w in document.GetWordCount().Keys)
+                {
+                    double weight = WeightOfWord(w, document);
+
+                    weights.Add(w, weight);
+                }
+
+                /* foreach (var w in document.GetWordCount().Keys)
+                 {
+                     weights.Add(w, WeightOfWord(w, document));
+                 }*/
+            //}) + "ms");
 
             document.documentWeights = weights;
             document.needRecalculateWeights = false;
@@ -234,6 +296,44 @@ namespace TextFinder
 
     public class Loader
     {
+        public static List<Document> AddFolder(string path, Base mainBase)
+        {
+            if (!Directory.Exists(path)) { PrintLoadError("No directory [" + path + "]"); return new List<Document>(); }
+
+            List<Document> files = new List<Document>();
+
+            List<Task> tasks = new List<Task>();
+
+            foreach (var p in Directory.GetFiles(path))
+            {
+                Console.WriteLine(p);
+
+                Task t = Task.Run(() =>
+               {
+                   Console.WriteLine("add file for " + Benchmark.Measure(() =>
+                   {
+                       Document doc = GetOtherText(p);
+
+                       if (doc.text != "###" && doc.text != "")
+                       {
+                           files.Add(doc);
+                       }
+                   }
+                   )
+                       );
+               });
+                tasks.Add(t);
+            }
+
+            Task.WaitAll(tasks.ToArray());
+            foreach (var f in files)
+            {
+                mainBase.AddDocument(f);
+            }
+
+            return files;
+        }
+
         public static Document GetTxt(string path)
         {
             if (!File.Exists(path)) { PrintLoadError("No file [" + path + "]"); return Document.Empty(); }
@@ -254,6 +354,29 @@ namespace TextFinder
             return newDocument;
         }
 
+        private static TextExtractor textExtractor;
+
+        public static TextExtractor GetExtractor()
+        {
+            if (textExtractor == null)
+            {
+                textExtractor = new TextExtractor();
+
+                string path = Directory.GetCurrentDirectory() + "\\p.txt";
+
+                //File.Create(path);
+
+                StreamWriter stream = new StreamWriter(path);
+                stream.WriteLine("its ok!");
+                stream.Flush();
+                stream.Close();
+                textExtractor.Extract(path);
+                Console.Clear();
+            }
+
+            return textExtractor;
+        }
+
         public static Document GetOtherText(string path)
         {
             if (!File.Exists(path)) { PrintLoadError("No file [" + path + "]"); return Document.Empty(); }
@@ -264,7 +387,7 @@ namespace TextFinder
 
             Document newDocument = new Document(name, creationTime);
 
-            var content = new TextExtractor().Extract(path).Text.Trim();
+            var content = GetExtractor().Extract(path).Text.Trim();
 
             switch (format)
             {
@@ -273,11 +396,12 @@ namespace TextFinder
                     string[] rows = content.Split('\t');
                     foreach (var r in rows)
                     {
-                        plainText += r.Trim()+" ";
+                        plainText += r.Trim() + " ";
                     }
                     content = plainText;
                     break;
-                default:  break;
+
+                default: break;
             }
 
             newDocument.text = content;
@@ -314,7 +438,7 @@ namespace TextFinder
             this.text = text;
         }
 
-        public Document(string title,string text)
+        public Document(string title, string text)
         {
             this.text = text;
             this.title = title;
@@ -327,6 +451,7 @@ namespace TextFinder
         public int documentID;
 
         public bool needRecalculateWeights = false;
+        public bool needRecalculateCount = false;
 
         public Dictionary<string, double> documentWeights = new Dictionary<string, double>();
 
@@ -334,9 +459,10 @@ namespace TextFinder
 
         public Dictionary<string, int> GetWordCount()
         {
-            if (wordCount.Count == 0)
+            if (wordCount.Count == 0 || needRecalculateCount)
             {
                 wordCount = CalculateWordCount();
+                needRecalculateCount = false;
             }
 
             return wordCount;
@@ -353,7 +479,7 @@ namespace TextFinder
 
             foreach (var w in words)
             {
-               // string trimmedWord = w.Trim()
+                string trimmedWord = w.Trim().ToLower();
                 if (!wordCount.ContainsKey(w))
                 {
                     wordCount.Add(w, 1);
@@ -361,6 +487,48 @@ namespace TextFinder
                 else
                 {
                     wordCount[w]++;
+                }
+            }
+
+            bool useAll = false;
+
+            if (!useAll)
+            {
+                int minimalWordGate = 50;
+                int keywords = (int)Math.Pow(wordCount.Count, (Main.accuracy / 100f));
+
+                int minimalWordUsingsCount = Main.minimalWordUsingsCount; //(int)Math.Pow(wordCount.Count, 1f / 5f);
+
+                if (wordCount.Count > minimalWordGate)
+                {
+                    int startSize = wordCount.Count;
+                    int removed = 0;
+
+                    long ellapsedMs =
+                    Benchmark.Measure(() =>
+                      {
+                          Dictionary<string, int> newWordCount = new Dictionary<string, int>(wordCount);
+
+                          foreach (var w in wordCount)
+                          {
+                              if (w.Value < minimalWordUsingsCount)
+                              {
+                                  newWordCount.Remove(w.Key);
+                                  removed++;
+                              }
+                              else if (w.Key.Length < Main.minWordLength)
+                              {
+                                  newWordCount.Remove(w.Key);
+                                  removed++;
+                              }
+                          }
+                          if (newWordCount.Count > 0)
+                          {
+                              wordCount = newWordCount.OrderByDescending(x => x.Value).Take(keywords).ToDictionary(p => p.Key, p => p.Value);
+                          }//Console.WriteLine("removed " + removed);
+                      });
+
+                    Console.WriteLine($"get top {keywords} words form {startSize}->{wordCount.Count} [gate={minimalWordUsingsCount}] in {ellapsedMs}ms");
                 }
             }
 
@@ -416,7 +584,9 @@ namespace TextFinder
 
         private string[] GetSearchQueryVector(string query)
         {
+            query = query.ToLower();
             string[] queryWords = query.Split(' ');
+
             //todo: each to nltk
 
             return queryWords;
@@ -425,6 +595,7 @@ namespace TextFinder
         private double ScalarProduct(Dictionary<string, double> allWordsWeights, string[] queryWords)
         {
             double result = 0;
+
             foreach (var searchedWord in queryWords)
             {
                 double searchedWordWeight = 0;
@@ -460,20 +631,21 @@ namespace TextFinder
 
             double queryEuclideanNorm = Math.Sqrt(qWords.Length);
 
+            
             foreach (var p in data.documents)
             {
                 double score = (ScalarProduct(data.GetDocumentWeights(p), qWords));
 
                 if (score > 0)
                 {
-                    results.Add(new SearchResult(p, "", score, "now"));
+                    results.Add(new SearchResult(p, "", score, "nosw"));
                 }
             }
-
+            
             var orderedResult = results.OrderBy(result => result.rank);
             foreach (var p in orderedResult)
             {
-                Console.WriteLine($" {p.rank}=={p.title} [id={p.documentID}]");
+                Console.WriteLine($" {p.rank:0.000} = {p.title} [id={p.documentID}]");
             }
 
             return orderedResult;
