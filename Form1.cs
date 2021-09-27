@@ -4,6 +4,10 @@ using System.Linq;
 using System.Windows.Forms;
     using System.Runtime.InteropServices;
 
+using OpenNLP;
+using System.IO;
+
+
 namespace TextFinder
 {
 
@@ -21,6 +25,9 @@ namespace TextFinder
         {
 
             InitializeComponent();
+
+            
+           // OpenNLP.Tools.Parser.Parse parse = new OpenNLP.Tools.Parser.Parse("kitten",)
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -36,12 +43,15 @@ namespace TextFinder
         {
             Base mainBase = new Base();
 
-            mainBase.AddDocument(new Document("here is some lorem ipsum text", 1));
-            mainBase.AddDocument(new Document("here is some lorem ipsum text but it is much longer",2));
-            mainBase.AddDocument(new Document("here is some banana text but it is much longer", 3));
-            mainBase.AddDocument(new Document("here is some banana banana banana text but it is much longer", 3));
+            mainBase.AddDocument(Loader.GetTxt("E:\\sampleText1.txt"));
+            mainBase.AddDocument(new Document("here is some lorem ipsum text"));
+            mainBase.AddDocument(new Document("here is some lorem ipsum text but it is much longer"));
+            mainBase.AddDocument(new Document("here is some banana text but it is much longer"));
+            mainBase.AddDocument(new Document("here is some banana banana banana text but it is much longer"));
 
             Search search = new Search();
+
+            
 
             search.GetSearchResult("lorem ipsum", mainBase);
             Console.WriteLine();
@@ -51,11 +61,13 @@ namespace TextFinder
 
     public class Base
     {
+        public int lastID = 0;
         public List<Document> documents = new List<Document>();
 
         public void AddDocument(Document d)
         {
             documents.Add(d);
+            d.documentID = ++lastID;
         }
 
         public bool RemoveDocument(Document d)
@@ -150,24 +162,62 @@ namespace TextFinder
         }
     }
 
+    public class Loader
+    {
+        public static Document GetTxt(string path)
+        {
+            if (!File.Exists(path)) { PrintLoadError("No file [" + path + "]"); return Document.Empty();  }
+
+            string name = Path.GetFileName(path);
+            DateTime creationTime = File.GetCreationTime(path);
+
+            Document newDocument = new Document(name, creationTime);
+
+            StreamReader stream = new StreamReader(path);
+            string content = stream.ReadToEnd();
+            stream.Close();
+
+            newDocument.text = content;
+
+            return newDocument;
+
+        }
+
+        public static void PrintLoadError(string error)
+        {
+            Console.BackgroundColor = ConsoleColor.DarkRed; 
+            
+            Console.WriteLine(error);
+            
+            Console.BackgroundColor = ConsoleColor.Black;
+        }
+             
+    }
     public class Document
     {
-        public Document(string title, string text, string date, string time, int documentID)
+        public static Document Empty()
+        {
+            return new Document("###");
+        }
+
+        public Document(string title, string text, string date, string time)
         {
             this.title = title;
             this.text = text;
             this.date = date;
             this.time = time;
-            this.documentID = documentID;
         }
 
-        public Document(string text,int documentID)
+        public Document(string title, DateTime creationTime)
         {
-            //this.title = title;
+            this.title = title;
+            this.date = creationTime.Date.ToShortDateString();
+            this.time = creationTime.Date.ToShortTimeString();
+        }
+
+        public Document(string text)
+        {
             this.text = text;
-           // this.date = date;
-           // this.time = time;
-            this.documentID = documentID;
         }
 
         public string title;
@@ -314,7 +364,7 @@ namespace TextFinder
                 double score = (ScalarProduct(data.GetDocumentWeights(p), qWords));
                 results.Add(new SearchResult(p, "", score, "now"));
 
-                Console.WriteLine($"{score} ::" + p.documentID);
+                Console.WriteLine($"{score} ::" + p.documentID+" {{"+p.title);
             }
 
             return results.OrderBy(result => result.rank);
