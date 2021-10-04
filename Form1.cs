@@ -29,19 +29,19 @@ namespace TextFinder
         private void Form1_Load(object sender, EventArgs e)
         {
             AllocConsole();
-            mainBase = Main.StartBase();
+            
 
             label1.Text = trackBar1.Value + "";
             Main.accuracy = trackBar1.Value;
-            mainBase.SetDocumentRefreshCountFlag();
 
             label2.Text = trackBar2.Value + "";
             Main.minWordLength = trackBar2.Value;
-            mainBase.SetDocumentRefreshCountFlag();
 
             label3.Text = trackBar3.Value + "";
             Main.minimalWordUsingsCount = trackBar3.Value;
-            mainBase.SetDocumentRefreshCountFlag();
+
+
+            mainBase = Main.StartBase();
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -82,17 +82,33 @@ namespace TextFinder
         private void label3_Click(object sender, EventArgs e)
         {
         }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            //Console.WriteLine($"size = {sizeof( mainBase.documents)}")
+            foreach (var d in mainBase.documents)
+            {
+                d.text = "";
+            }
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            mainBase.ForceCacheDocumentWeights();
+        }
     }
 
     public class Main
     {
-        public static float accuracy = 80;
+        public static float accuracy = 100;
         public static int minWordLength = 2;
         public static int minimalWordUsingsCount = 2;
 
+        public static bool createIndexOnLoad = true;
+
         public static Base StartBase()
         {
-            Console.Clear();
+            //Console.Clear();
             Loader.GetExtractor();//.Extract();
             Base mainBase = new Base();
 
@@ -109,7 +125,8 @@ namespace TextFinder
              mainBase.AddDocument(new Document("long lorem", "here is some lorem ipsum text but it is much longer"));
              mainBase.AddDocument(new Document("single banana", "here is some banana text but it is much longer"));
              mainBase.AddDocument(new Document("many banana", "here is some banana banana banana text but it is much longer"));*/
-           
+
+           // mainBase.ForceCacheDocumentWeights();
 
             return mainBase;
         }
@@ -237,13 +254,7 @@ namespace TextFinder
 
         private double wordWeighted(string word, Document document)
         {
-            float Ndk = document.GetWordCount(word); //число встреч  k-го слова (признака) в документе  d,
-            float Nk = GetDocumentCountWithWord(word); //Nk – число документов,  содержащих k-ое слово (признак),
-            float N = documents.Count; //N   - общее число рассматриваемых документов.
-
-            double Wdk = (Ndk * Math.Log(N / Nk));
-
-            return Wdk;
+            return wordWeighted(word, document.GetWordCount(word), documents.Count);
         }
 
         private double wordWeighted(string word, int wordCount, int documentsCount)
@@ -257,15 +268,33 @@ namespace TextFinder
             return Wdk;
         }
 
+        public void ForceCacheDocumentWeights()
+        {
+            Console.WriteLine("GetDocumentWeights(caching) for" +
+            Benchmark.Measure(() =>
+            {
+                Parallel.ForEach(documents, (document) => GetDocumentWeights(document));
+
+               /* foreach (var document in documents)
+                {
+                    
+                }*/
+                /*foreach (var document in documents)
+                {
+                    GetDocumentWeights(document);
+                }*/
+            }) + "ms");
+        }
+
         public Dictionary<string, double> GetDocumentWeights(Document document)
         {
             if (document.documentWeights.Count != 0 && !document.needRecalculateWeights) { return document.documentWeights; }
 
             Dictionary<string, double> weights = new Dictionary<string, double>();
-/*
+
             Console.WriteLine("GetDocumentWeights for" +
             Benchmark.Measure(() =>
-            {*/
+            {
                 /* List<Task> tasks = new List<Task>();
                  foreach (var w in document.GetWordCount().Keys)
                  {
@@ -285,7 +314,7 @@ namespace TextFinder
                  {
                      weights.Add(w, WeightOfWord(w, document));
                  }*/
-            //}) + "ms");
+            }) + "ms");
 
             document.documentWeights = weights;
             document.needRecalculateWeights = false;
@@ -317,6 +346,7 @@ namespace TextFinder
                        if (doc.text != "###" && doc.text != "")
                        {
                            files.Add(doc);
+                           
                        }
                    }
                    )
@@ -325,7 +355,28 @@ namespace TextFinder
                 tasks.Add(t);
             }
 
+           
+
             Task.WaitAll(tasks.ToArray());
+
+            if (Main.createIndexOnLoad)
+            {
+                
+                Console.WriteLine("add snippets for " + Benchmark.Measure(() =>
+                {
+                    //tasks.Clear();
+                    foreach (var doc in files)
+                    {
+                       var t = Task.Run(() => { doc.GetWordCount(); doc.GetSnippets(); });
+                        //t.Start();
+                       // tasks.Add(t);
+
+
+                    }
+                    //Task.WaitAll(tasks.ToArray());
+                }));
+            }
+
             foreach (var f in files)
             {
                 mainBase.AddDocument(f);
@@ -341,7 +392,7 @@ namespace TextFinder
             string name = Path.GetFileName(path);
             DateTime creationTime = File.GetCreationTime(path);
 
-            Document newDocument = new Document(name, creationTime);
+            Document newDocument = new Document(name, creationTime,path);
 
             StreamReader stream = new StreamReader(path);
             string content = stream.ReadToEnd();
@@ -371,7 +422,7 @@ namespace TextFinder
                 stream.Flush();
                 stream.Close();
                 textExtractor.Extract(path);
-                Console.Clear();
+                //Console.Clear();
             }
 
             return textExtractor;
@@ -385,7 +436,7 @@ namespace TextFinder
             string format = Path.GetExtension(path);
             DateTime creationTime = File.GetCreationTime(path);
 
-            Document newDocument = new Document(name, creationTime);
+            Document newDocument = new Document(name, creationTime,path);
 
             var content = GetExtractor().Extract(path).Text.Trim();
 
@@ -426,9 +477,10 @@ namespace TextFinder
             return new Document("###");
         }
 
-        public Document(string title, DateTime creationTime)
+        public Document(string title, DateTime creationTime,string path)
         {
             this.title = title;
+            this.filePath = path;
             this.date = creationTime.Date.ToShortDateString();
             this.time = creationTime.Date.ToShortTimeString();
         }
@@ -444,6 +496,7 @@ namespace TextFinder
             this.title = title;
         }
 
+        public string filePath;
         public string title;
         public string text;
         public string date;
@@ -456,6 +509,68 @@ namespace TextFinder
         public Dictionary<string, double> documentWeights = new Dictionary<string, double>();
 
         private Dictionary<string, int> wordCount = new Dictionary<string, int>();
+
+        public Dictionary<string, string> snippets = new Dictionary<string, string>();
+
+        public Dictionary<string, string> GetSnippets()
+        {
+            if (snippets.Count == 0 || needRecalculateCount)
+            {
+                snippets = CalculateSnippets(GetWordCount());
+                //needRecalculateCount = false;
+            }
+
+            return snippets;
+        }
+
+        Dictionary<string, string> CalculateSnippets(Dictionary<string, int> wordCounts)
+        {
+            Dictionary<string, string> snippets = new Dictionary<string, string>(wordCount.Count+5);
+
+            Console.WriteLine($"calc {wordCount.Count} snippet for " + Benchmark.Measure(() =>
+            {
+                foreach (string w in wordCounts.Keys)
+                {
+                    snippets.Add(w,"");
+                }
+                List<string> wordKeys = new List<string>(wordCount.Count);
+                wordKeys.AddRange(wordCount.Keys);
+
+                Parallel.For(0, wordCounts.Count, (i) => {
+
+                    string w = wordKeys[i];
+                    int wordLength = w.Length;
+                    int wordPosition = text.IndexOf(w + " ");
+
+                    int startMargin = 10;
+
+                    if (wordPosition <= startMargin)
+                    {
+                        startMargin = 0;
+                    }
+                    string snipp = text.Substring(wordPosition - startMargin, wordLength + 25);
+                    snippets[w] = snipp;
+
+                });
+                /*
+                foreach (string w in wordCounts.Keys)
+                {
+                    int wordLength = w.Length;
+                    int wordPosition = text.IndexOf(w+" ");
+
+                    int startMargin = 10;
+
+                    if (wordPosition <= startMargin)
+                    {
+                        startMargin = 0;
+                    }
+                    string snipp = text.Substring(wordPosition - startMargin, wordLength + 25);
+                    snippets.Add(w, snipp);
+                }*/
+            }));
+
+            return snippets;
+        }
 
         public Dictionary<string, int> GetWordCount()
         {
@@ -620,6 +735,17 @@ namespace TextFinder
             return Math.Sqrt(sqSum);
         }
 
+        public string GetSnippets(Document d, string[] query)
+        {
+            string s = "";
+
+            foreach (var w in query)
+            {
+                s += d.GetSnippets()[w] + "\n";
+            }
+            return s;
+        }
+
         public IOrderedEnumerable<SearchResult> GetSearchResult(string query, Base data)
         {
             Console.WriteLine($"search [{query}] in {data.documents.Count} documents");
@@ -638,14 +764,14 @@ namespace TextFinder
 
                 if (score > 0)
                 {
-                    results.Add(new SearchResult(p, "", score, "nosw"));
+                    results.Add(new SearchResult(p, GetSnippets(p,qWords), score, "nosw"));
                 }
             }
             
             var orderedResult = results.OrderBy(result => result.rank);
             foreach (var p in orderedResult)
             {
-                Console.WriteLine($" {p.rank:0.000} = {p.title} [id={p.documentID}]");
+                Console.WriteLine($" {p.rank:0.000} = {p.title} [id={p.documentID}] [...{p.snippet}...]");
             }
 
             return orderedResult;
