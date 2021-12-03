@@ -114,6 +114,7 @@ namespace TextFinder
 
             Console.WriteLine("add folder for " + Benchmark.Measure(() => Loader.AddFolder("E:\\folder", mainBase)) + "ms");
 
+            //Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetTxt("E:\\folder\\МитиоКакуГиперпространство.txt"))));
             /*
             Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetTxt("E:\\sampleText1.txt"))));
             Console.WriteLine("add for " + Benchmark.Measure(() => mainBase.AddDocument(Loader.GetOtherText("E:\\sampleTextPDF.pdf"))));
@@ -741,7 +742,10 @@ namespace TextFinder
 
             foreach (var w in query)
             {
-                s += d.GetSnippets()[w] + "\n";
+                string snippet = "";
+                d.GetSnippets().TryGetValue(w, out snippet);
+
+                s += snippet + "\n";
             }
             return s;
         }
@@ -768,7 +772,7 @@ namespace TextFinder
                 }
             }
             
-            var orderedResult = results.OrderBy(result => result.rank);
+            var orderedResult = results. OrderByDescending(result => result.rank);
             foreach (var p in orderedResult)
             {
                 Console.WriteLine($" {p.rank:0.000} = {p.title} [id={p.documentID}] [...{p.snippet}...]");
